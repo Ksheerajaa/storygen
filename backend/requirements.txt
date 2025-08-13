@@ -1,0 +1,15 @@
+django>=4.2.0
+djangorestframework
+django-cors-headers
+langchain
+langchain-community
+langchain-huggingface
+transformers
+torch
+diffusers
+pillow
+opencv-python
+rembg
+requests
+accelerate
+safetensors
