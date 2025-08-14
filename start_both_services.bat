@@ -34,7 +34,7 @@ echo 🔄 Starting Django Backend Server...
 start "StoryGen Backend" cmd /k "cd backend && python manage.py runserver 127.0.0.1:8000"
 
 REM Wait a moment for backend to start
-timeout /t 3 /nobreak > nul
+timeout /t 5 /nobreak > nul
 
 REM Start frontend in a new window
 echo.
@@ -50,4 +50,28 @@ echo.
 echo 💡 Keep these windows open to run the services
 echo    Close them when you're done
 echo.
+echo ⏳ Waiting for services to start...
+timeout /t 10 /nobreak > nul
+
+REM Test if services are running
+echo.
+echo 🔍 Testing service availability...
+echo Testing backend...
+curl -s http://127.0.0.1:8000/api/health/ > nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Backend is running and accessible
+) else (
+    echo ❌ Backend is not accessible yet
+)
+
+echo Testing frontend...
+curl -s http://localhost:3000 > nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Frontend is running and accessible
+) else (
+    echo ❌ Frontend is not accessible yet
+)
+
+echo.
+echo 🚀 Services should now be available!
 pause

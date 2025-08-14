@@ -128,8 +128,11 @@ class StoryOrchestrator:
     def _create_session_directory(self, session_id: str) -> str:
         """Create session-specific directory for organizing files"""
         try:
-            # Create session directory in media folder
-            session_dir = Path("..") / ".." / "media" / "sessions" / session_id
+            # Import Django settings to get MEDIA_ROOT
+            from django.conf import settings
+            
+            # Create session directory in Django's media folder
+            session_dir = Path(settings.MEDIA_ROOT) / "sessions" / session_id
             session_dir.mkdir(parents=True, exist_ok=True)
             
             # Create subdirectories for different types of content
@@ -141,6 +144,23 @@ class StoryOrchestrator:
             logger.info(f"Session directory created: {session_dir}")
             return str(session_dir)
             
+        except ImportError:
+            # Fallback if Django settings not available
+            logger.warning("Django settings not available, using fallback directory")
+            try:
+                # Create in current directory with media subfolder
+                fallback_dir = Path(".") / "media" / "sessions" / session_id
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                (fallback_dir / "story").mkdir(exist_ok=True)
+                (fallback_dir / "images").mkdir(exist_ok=True)
+                (fallback_dir / "processed").mkdir(exist_ok=True)
+                (fallback_dir / "final").mkdir(exist_ok=True)
+                logger.info(f"Fallback session directory created: {fallback_dir}")
+                return str(fallback_dir)
+            except Exception as fallback_error:
+                logger.error(f"Failed to create fallback directory: {fallback_error}")
+                # Last resort - use current directory
+                return str(Path(".").resolve())
         except Exception as e:
             logger.error(f"Failed to create session directory: {e}")
             # Fallback to current directory with session subfolder
@@ -723,11 +743,19 @@ The end of this story is not really an ending, but a new beginning - for stories
                 "session_id": session_id
             }
 
-    def merge_images_only(self, prompt_text: str, session_id: str) -> Dict[str, Any]:
+    def merge_images_only(self, prompt_text: str, session_id: str, image1_path: str = None, image2_path: str = None) -> Dict[str, Any]:
         """Merge existing character and background images"""
         try:
+            logger.info(f"merge_images_only called with:")
+            logger.info(f"  prompt_text: {prompt_text}")
+            logger.info(f"  session_id: {session_id}")
+            logger.info(f"  image1_path: {image1_path}")
+            logger.info(f"  image2_path: {image2_path}")
+            
             self.session_id = session_id
             self.start_time = time.time()
+            
+            logger.info(f"Creating session directory for session_id: {session_id}")
             self._create_session_directory(session_id)
             
             logger.info(f"🚀 Starting Image Merging Pipeline")
@@ -735,25 +763,58 @@ The end of this story is not really an ending, but a new beginning - for stories
             logger.info(f"User Prompt: {prompt_text}")
             logger.info("=" * 60)
             
-            # This would typically require existing images to be uploaded
-            # For now, we'll return a message about the requirement
-            logger.info("ℹ️ Image merging requires existing character and background images")
+            # Check if we have image paths
+            if not image1_path or not image2_path:
+                logger.warning("Image paths not provided for merging")
+                return {
+                    "status": "failed",
+                    "error": "Both image1_path and image2_path are required for merging",
+                    "session_id": session_id
+                }
             
-            # Compile results
-            final_result = {
-                "status": "success",
-                "session_id": session_id,
-                "results": {
-                    "merge_info": "Image merging requires existing character and background images to be uploaded"
-                },
-                "output_files": {},
-                "total_time_seconds": time.time() - self.start_time,
-                "workflow_status": self.workflow_status
-            }
+            # Check if images exist
+            if not os.path.exists(image1_path) or not os.path.exists(image2_path):
+                logger.warning("One or both images do not exist")
+                return {
+                    "status": "failed",
+                    "error": "One or both images not found",
+                    "session_id": session_id
+                }
             
-            logger.info("✅ Image merging pipeline completed successfully")
-            return final_result
+            # Create merged image path
+            merged_path = Path(self.session_dir) / "images" / "merged.png"
+            merged_path.parent.mkdir(parents=True, exist_ok=True)
             
+            # Perform image merging
+            logger.info("Merging images...")
+            merge_success = self._merge_two_images(image1_path, image2_path, str(merged_path))
+            
+            if merge_success and merged_path.exists():
+                logger.info("✅ Image merging completed successfully")
+                
+                # Compile results
+                final_result = {
+                    "status": "success",
+                    "session_id": session_id,
+                    "results": {
+                        "merge_info": f"Successfully merged {os.path.basename(image1_path)} and {os.path.basename(image2_path)}"
+                    },
+                    "output_files": {
+                        "merged_image": str(merged_path)
+                    },
+                    "total_time_seconds": time.time() - self.start_time,
+                    "workflow_status": self.workflow_status
+                }
+                
+                return final_result
+            else:
+                logger.error("Image merging failed")
+                return {
+                    "status": "failed",
+                    "error": "Failed to merge images",
+                    "session_id": session_id
+                }
+                
         except Exception as e:
             logger.error(f"Image merging failed: {e}")
             return {
@@ -761,6 +822,40 @@ The end of this story is not really an ending, but a new beginning - for stories
                 "error": str(e),
                 "session_id": session_id
             }
+    
+    def _merge_two_images(self, image1_path: str, image2_path: str, output_path: str) -> bool:
+        """Merge two images side by side"""
+        try:
+            from PIL import Image
+            
+            # Open both images
+            img1 = Image.open(image1_path)
+            img2 = Image.open(image2_path)
+            
+            # Resize images to same height for better merging
+            target_height = 512
+            img1_resized = img1.resize((int(img1.width * target_height / img1.height), target_height), Image.Resampling.LANCZOS)
+            img2_resized = img2.resize((int(img2.width * target_height / img2.height), target_height), Image.Resampling.LANCZOS)
+            
+            # Calculate total width
+            total_width = img1_resized.width + img2_resized.width
+            
+            # Create new image with combined width
+            merged_image = Image.new('RGB', (total_width, target_height), (255, 255, 255))
+            
+            # Paste images side by side
+            merged_image.paste(img1_resized, (0, 0))
+            merged_image.paste(img2_resized, (img1_resized.width, 0))
+            
+            # Save merged image
+            merged_image.save(output_path, 'PNG')
+            
+            logger.info(f"Merged image saved to: {output_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to merge images: {e}")
+            return False
 
     def _generate_character_image_from_prompt(self, prompt_text: str) -> Optional[Dict[str, Any]]:
         """Generate character image directly from prompt"""
@@ -836,7 +931,7 @@ Generated at: {datetime.now().isoformat()}
                 "status": "failed",
                 "error": str(e)
             }
-
+    
     def _generate_background_image_from_prompt(self, prompt_text: str) -> Optional[Dict[str, Any]]:
         """Generate background image directly from prompt"""
         try:

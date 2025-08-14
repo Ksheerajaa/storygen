@@ -184,9 +184,16 @@ class GenerateStoryView(APIView):
                     }, status=status.HTTP_400_BAD_REQUEST)
             
             # Create session
+            if generation_type == 'merge':
+                # For merge, use a descriptive prompt based on image names
+                session_prompt = f"Merge images: {request.FILES.get('image1', 'image1').name} + {request.FILES.get('image2', 'image2').name}"
+            else:
+                # For other types, use the provided prompt_text
+                session_prompt = prompt_text or "No prompt provided"
+            
             session = StorySession.objects.create(
                 session_id=f"session_{uuid.uuid4().hex[:8]}",
-                prompt_text=prompt_text or f"Merge images: {image1.name} + {image2.name}" if generation_type == 'merge' else prompt_text,
+                prompt_text=session_prompt,
                 status='in_progress'
             )
             
@@ -205,7 +212,35 @@ class GenerateStoryView(APIView):
             elif generation_type == 'background':
                 result = orchestrator.generate_background_only(prompt_text, session.session_id)
             elif generation_type == 'merge':
-                result = orchestrator.merge_images_only(prompt_text, session.session_id)
+                # For merge, require two images
+                image1 = request.FILES.get('image1')
+                image2 = request.FILES.get('image2')
+                if not image1 or not image2:
+                    return Response({
+                        'error': 'Both image1 and image2 are required for merge generation',
+                        'timestamp': datetime.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Save uploaded images to session directory
+                session_dir = Path("media") / "sessions" / session.session_id / "images"
+                session_dir.mkdir(parents=True, exist_ok=True)
+                
+                image1_path = session_dir / f"uploaded_image1_{uuid.uuid4().hex[:8]}.png"
+                image2_path = session_dir / f"uploaded_image2_{uuid.uuid4().hex[:8]}.png"
+                
+                # Save uploaded files
+                with open(image1_path, 'wb') as f:
+                    for chunk in image1.chunks():
+                        f.write(chunk)
+                
+                with open(image2_path, 'wb') as f:
+                    for chunk in image2.chunks():
+                        f.write(chunk)
+                
+                self.logger.info(f"Uploaded images saved: {image1_path}, {image2_path}")
+                
+                # Call orchestrator with image paths
+                result = orchestrator.merge_images_only(prompt_text, session.session_id, str(image1_path), str(image2_path))
             else:
                 # Full generation
                 result = orchestrator.process_user_request(prompt_text, session.session_id)
@@ -345,7 +380,9 @@ class GenerateStoryView(APIView):
                     'story_text': result['results'].get('merge_info', 'Image merging completed successfully'),
                     'character_description': '',
                     'background_description': '',
-                    'image_urls': {}
+                    'image_urls': {
+                        'merged_image': self._get_media_url(result['output_files'].get('merged_image', ''))
+                    }
                 }
                 
             else:
@@ -405,12 +442,34 @@ class GenerateStoryView(APIView):
         if not file_path:
             return None
         
-        # Convert to relative path from media root
-        if file_path.startswith('media/'):
-            return f"/media/{file_path[6:]}"
-        elif file_path.startswith('characters/') or file_path.startswith('backgrounds/') or file_path.startswith('merged/'):
-            return f"/media/{file_path}"
-        else:
+        try:
+            # Normalize path separators to forward slashes
+            normalized_path = str(file_path).replace('\\', '/')
+            
+            # Convert absolute path to relative path from media root
+            if os.path.isabs(normalized_path):
+                # Extract the part after 'media' in the path
+                if 'media' in normalized_path:
+                    media_index = normalized_path.find('media')
+                    relative_path = normalized_path[media_index + 6:]  # Skip 'media/'
+                    return f"/media/{relative_path}"
+                else:
+                    # If no 'media' in path, assume it's relative to media root
+                    return f"/media/{os.path.basename(normalized_path)}"
+            
+            # Handle relative paths
+            elif normalized_path.startswith('media/'):
+                return f"/media/{normalized_path[6:]}"
+            elif normalized_path.startswith('characters/') or normalized_path.startswith('backgrounds/') or normalized_path.startswith('merged/'):
+                return f"/media/{normalized_path}"
+            elif normalized_path.startswith('sessions/'):
+                return f"/media/{normalized_path}"
+            else:
+                # Assume it's a filename in the media root
+                return f"/media/{normalized_path}"
+                
+        except Exception as e:
+            self.logger.error(f"Error converting file path to media URL: {e}")
             return None
 
 
@@ -751,9 +810,16 @@ class StreamingStoryGenerationView(APIView):
                     }, status=status.HTTP_400_BAD_REQUEST)
             
             # Create session
+            if generation_type == 'merge':
+                # For merge, use a descriptive prompt based on image names
+                session_prompt = f"Merge images: {request.FILES.get('image1', 'image1').name} + {request.FILES.get('image2', 'image2').name}"
+            else:
+                # For other types, use the provided prompt_text
+                session_prompt = prompt_text or "No prompt provided"
+            
             session = StorySession.objects.create(
                 session_id=f"session_{uuid.uuid4().hex[:8]}",
-                prompt_text=prompt_text or f"Merge images: {image1.name} + {image2.name}" if generation_type == 'merge' else prompt_text,
+                prompt_text=session_prompt,
                 status='in_progress'
             )
             
@@ -804,8 +870,40 @@ class StreamingStoryGenerationView(APIView):
                 result = orchestrator.generate_background_only(prompt_text, session.session_id)
             elif generation_type == 'merge':
                 yield f"data: {json.dumps({'type': 'status', 'message': 'Processing images for merge...', 'progress': 30})}\n\n"
-                # Handle image merge - you'll need to implement this in your orchestrator
-                result = orchestrator.merge_images_only(prompt_text, session.session_id)
+                # For merge, require two images
+                image1 = request.FILES.get('image1')
+                image2 = request.FILES.get('image2')
+                if not image1 or not image2:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Both image1 and image2 are required for merge generation'})}\n\n"
+                    raise ValueError("Both image1 and image2 are required for merge generation")
+                
+                self.logger.info(f"Processing merge request with session_id: {session.session_id}")
+                
+                # Save uploaded images to session directory
+                session_dir = Path("media") / "sessions" / session.session_id / "images"
+                self.logger.info(f"Creating session directory: {session_dir}")
+                session_dir.mkdir(parents=True, exist_ok=True)
+                
+                image1_path = session_dir / f"uploaded_image1_{uuid.uuid4().hex[:8]}.png"
+                image2_path = session_dir / f"uploaded_image2_{uuid.uuid4().hex[:8]}.png"
+                
+                self.logger.info(f"Image paths: {image1_path}, {image2_path}")
+                
+                # Save uploaded files
+                with open(image1_path, 'wb') as f:
+                    for chunk in image1.chunks():
+                        f.write(chunk)
+                
+                with open(image2_path, 'wb') as f:
+                    for chunk in image2.chunks():
+                        f.write(chunk)
+                
+                self.logger.info(f"Uploaded images saved: {image1_path}, {image2_path}")
+                
+                # Call orchestrator with image paths (prompt_text can be empty for merge)
+                prompt_for_merge = prompt_text or "Merge uploaded images"
+                self.logger.info(f"Calling orchestrator with prompt: '{prompt_for_merge}'")
+                result = orchestrator.merge_images_only(prompt_for_merge, session.session_id, str(image1_path), str(image2_path))
             else:
                 # Full generation with detailed progress
                 yield f"data: {json.dumps({'type': 'status', 'message': 'Generating story content...', 'progress': 30})}\n\n"

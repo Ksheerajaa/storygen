@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './AudioInput.css';
 
-const AudioInput = ({ onTranscriptionComplete, backendUrl = 'http://127.0.0.1:8000' }) => {
+const AudioInput = ({ promptText, setPromptText, placeholder = "Describe what you want to generate...", backendUrl = 'http://127.0.0.1:8000' }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
@@ -12,6 +12,13 @@ const AudioInput = ({ onTranscriptionComplete, backendUrl = 'http://127.0.0.1:80
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+
+  // Update promptText when transcription changes
+  useEffect(() => {
+    if (transcription && setPromptText) {
+      setPromptText(transcription);
+    }
+  }, [transcription, setPromptText]);
 
   // Initialize Web Speech API
   useEffect(() => {
@@ -124,7 +131,7 @@ const AudioInput = ({ onTranscriptionComplete, backendUrl = 'http://127.0.0.1:80
       
       if (result.success) {
         setTranscription(result.transcription);
-        onTranscriptionComplete(result.transcription);
+        // onTranscriptionComplete(result.transcription); // This line was removed as per new_code
       } else {
         throw new Error(result.error || 'Transcription failed');
       }
@@ -140,7 +147,7 @@ const AudioInput = ({ onTranscriptionComplete, backendUrl = 'http://127.0.0.1:80
   // Submit transcription to parent component
   const handleSubmitTranscription = () => {
     if (transcription.trim()) {
-      onTranscriptionComplete(transcription);
+      // onTranscriptionComplete(transcription); // This line was removed as per new_code
     }
   };
 
@@ -156,114 +163,95 @@ const AudioInput = ({ onTranscriptionComplete, backendUrl = 'http://127.0.0.1:80
   };
 
   return (
-    <div className="audio-input-container">
+    <div className="audio-input">
+      <div className="input-section">
+        <h4>Text Input</h4>
+        <textarea
+          value={promptText || ''}
+          onChange={(e) => setPromptText(e.target.value)}
+          placeholder={placeholder}
+          rows="3"
+          className="text-input"
+        />
+      </div>
 
-
-      {/* Real-time Speech Recording */}
-      <div className="recording-section">
+      <div className="input-section">
         <h4>Voice Input</h4>
-        <div className="recording-controls">
+        <div className="voice-controls">
           {!isRecording ? (
             <button 
-              className="record-button start"
+              type="button"
               onClick={startRecording}
+              className="record-button"
               disabled={isProcessing}
             >
               🎤 Start Recording
             </button>
           ) : (
             <button 
-              className="record-button stop"
+              type="button"
               onClick={stopRecording}
+              className="stop-button"
             >
               ⏹️ Stop Recording
             </button>
           )}
-          
-          {isRecording && (
-            <div className="recording-indicator">
-              <div className="pulse-dot"></div>
-              <span>Recording...</span>
-            </div>
-          )}
         </div>
         
         {transcription && (
-          <div className="transcription-preview">
-            <h5>Transcription Preview:</h5>
-            <div className="transcription-text">
-              {transcription}
-            </div>
-            <div className="transcription-actions">
-              <button 
-                className="submit-button"
-                onClick={handleSubmitTranscription}
-              >
-                ✅ Use This Text
-              </button>
-              <button 
-                className="clear-button"
-                onClick={handleClear}
-              >
-                🗑️ Clear
-              </button>
-            </div>
+          <div className="transcription-display">
+            <h5>Voice Transcription:</h5>
+            <p>{transcription}</p>
           </div>
         )}
       </div>
 
-      {/* Audio File Upload */}
-      <div className="upload-section">
-        <h4>File Upload</h4>
-        <div className="file-upload-area">
+      <div className="input-section">
+        <h4>Audio File Upload</h4>
+        <div className="file-upload">
           <input
             type="file"
-            accept=".wav,.mp3,.mpeg,.wave"
+            accept="audio/*"
             onChange={handleFileUpload}
-            disabled={isProcessing}
-            id="audio-file-input"
+            className="file-input"
+            id="audio-file"
           />
-          <label htmlFor="audio-file-input" className="file-upload-label">
-            {audioFile ? `📁 ${audioFile.name}` : '📁 Choose audio file (.wav, .mp3)'}
+          <label htmlFor="audio-file" className="file-label">
+            📁 Choose Audio File
           </label>
         </div>
         
         {audioFile && (
           <div className="file-info">
-            <p>File: {audioFile.name}</p>
-            <p>Size: {(audioFile.size / 1024 / 1024).toFixed(2)} MB</p>
+            <p>Selected: {audioFile.name}</p>
             <button 
-              className="transcribe-button"
               onClick={transcribeAudioFile}
               disabled={isProcessing}
+              className="process-button"
             >
-              {isProcessing ? '🔄 Transcribing...' : '🎵 Transcribe Audio'}
+              {isProcessing ? '🔄 Processing...' : '🎵 Process Audio'}
             </button>
-          </div>
-        )}
-        
-        {isProcessing && (
-          <div className="progress-container">
-            <div className="progress-bar">
-              <div 
-                className="progress-fill" 
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-            <div className="progress-text">Processing audio...</div>
           </div>
         )}
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="error-message">
-          <span className="error-icon">❌</span>
-          {error}
+          <p>❌ {error}</p>
         </div>
       )}
 
-
+      {uploadProgress > 0 && uploadProgress < 100 && (
+        <div className="upload-progress">
+          <div className="progress-bar">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+          </div>
+          <p>Uploading: {uploadProgress}%</p>
+        </div>
+      )}
     </div>
   );
 };

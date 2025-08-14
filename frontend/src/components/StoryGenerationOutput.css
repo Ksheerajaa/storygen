@@ -385,6 +385,139 @@
   line-height: 1.5;
 }
 
+/* Navigation Menu Styles */
+.navigation-menu {
+    margin-top: 2rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.navigation-menu h3 {
+    color: white;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.menu-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.menu-button {
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 15px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 60px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.menu-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.home-button {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+}
+
+.home-button:hover {
+    background: linear-gradient(135deg, #ee5a24, #ff6b6b);
+}
+
+.story-button {
+    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+    color: white;
+}
+
+.story-button:hover {
+    background: linear-gradient(135deg, #44a08d, #4ecdc4);
+}
+
+.character-button {
+    background: linear-gradient(135deg, #a8edea, #fed6e3);
+    color: #333;
+}
+
+.character-button:hover {
+    background: linear-gradient(135deg, #fed6e3, #a8edea);
+}
+
+.background-button {
+    background: linear-gradient(135deg, #ffecd2, #fcb69f);
+    color: #333;
+}
+
+.background-button:hover {
+    background: linear-gradient(135deg, #fcb69f, #ffecd2);
+}
+
+.merge-button {
+    background: linear-gradient(135deg, #d299c2, #fef9d7);
+    color: #333;
+}
+
+.merge-button:hover {
+    background: linear-gradient(135deg, #fef9d7, #d299c2);
+}
+
+.full-button {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.full-button:hover {
+    background: linear-gradient(135deg, #764ba2, #667eea);
+}
+
+/* Success and Error Header Styles */
+.success-header, .error-header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 2rem;
+    border-radius: 15px;
+}
+
+.success-header {
+    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+    color: white;
+}
+
+.error-header {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+}
+
+.success-header h2, .error-header h2 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+}
+
+.success-header p, .error-header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.generation-result {
+    margin-bottom: 2rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .story-generation-output {
@@ -415,6 +548,26 @@
     width: 100%;
     max-width: 200px;
   }
+
+    .menu-options {
+        grid-template-columns: 1fr;
+        gap: 0.8rem;
+    }
+    
+    .menu-button {
+        padding: 0.8rem 1.2rem;
+        font-size: 0.9rem;
+        min-height: 50px;
+    }
+    
+    .navigation-menu {
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    
+    .navigation-menu h3 {
+        font-size: 1.3rem;
+    }
 }
 
 @media (max-width: 480px) {
