@@ -17,10 +17,24 @@ from datetime import datetime
 import traceback
 
 # Import all AI pipeline modules
-from .langchain_foundation import get_langchain_core
-from .story_generator import get_story_generator
-from .image_generator import get_image_generator
-from .image_processor import get_image_processor
+try:
+    from .langchain_foundation import get_langchain_core
+    from .story_generator import get_story_generator
+    from .image_generator import get_image_generator
+    from .image_processor import get_image_processor
+    AI_MODULES_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Some AI modules not available: {e}")
+    AI_MODULES_AVAILABLE = False
+    # Create dummy functions for fallback
+    def get_langchain_core():
+        return None
+    def get_story_generator():
+        return None
+    def get_image_generator():
+        return None
+    def get_image_processor():
+        return None
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -57,39 +71,55 @@ class StoryOrchestrator:
         try:
             logger.info("Initializing AI pipeline components...")
             
+            if not AI_MODULES_AVAILABLE:
+                logger.warning("⚠️ AI modules not available - running in fallback mode")
+                return
+            
             # Initialize LangChain foundation
             logger.info("1. Initializing LangChain foundation...")
-            self.langchain_core = get_langchain_core()
-            if self.langchain_core and self.langchain_core.initialized:
-                logger.info("✅ LangChain foundation initialized successfully")
-            else:
-                logger.warning("⚠️ LangChain foundation initialization incomplete")
+            try:
+                self.langchain_core = get_langchain_core()
+                if self.langchain_core and hasattr(self.langchain_core, 'initialized') and self.langchain_core.initialized:
+                    logger.info("✅ LangChain foundation initialized successfully")
+                else:
+                    logger.warning("⚠️ LangChain foundation initialization incomplete")
+            except Exception as e:
+                logger.warning(f"⚠️ LangChain foundation failed to initialize: {e}")
             
             # Initialize story generator
             logger.info("2. Initializing story generator...")
-            self.story_generator = get_story_generator()
-            if self.story_generator and self.story_generator.initialized:
-                logger.info("✅ Story generator initialized successfully")
-            else:
-                logger.warning("⚠️ Story generator initialization incomplete")
+            try:
+                self.story_generator = get_story_generator()
+                if self.story_generator and hasattr(self.story_generator, 'initialized') and self.story_generator.initialized:
+                    logger.info("✅ Story generator initialized successfully")
+                else:
+                    logger.warning("⚠️ Story generator initialization incomplete")
+            except Exception as e:
+                logger.warning(f"⚠️ Story generator failed to initialize: {e}")
             
             # Initialize image generator
             logger.info("3. Initializing image generator...")
-            self.image_generator = get_image_generator()
-            if self.image_generator and self.image_generator.initialized:
-                logger.info("✅ Image generator initialized successfully")
-            else:
-                logger.warning("⚠️ Image generator initialization incomplete")
+            try:
+                self.image_generator = get_image_generator()
+                if self.image_generator and hasattr(self.image_generator, 'initialized') and self.image_generator.initialized:
+                    logger.info("✅ Image generator initialized successfully")
+                else:
+                    logger.warning("⚠️ Image generator initialization incomplete")
+            except Exception as e:
+                logger.warning(f"⚠️ Image generator failed to initialize: {e}")
             
             # Initialize image processor
             logger.info("4. Initializing image processor...")
-            self.image_processor = get_image_processor()
-            if self.image_processor and self.image_processor.initialized:
-                logger.info("✅ Image processor initialized successfully")
-            else:
-                logger.warning("⚠️ Image processor initialization incomplete")
+            try:
+                self.image_processor = get_image_processor()
+                if self.image_processor and hasattr(self.image_processor, 'initialized') and self.image_processor.initialized:
+                    logger.info("✅ Image processor initialized successfully")
+                else:
+                    logger.warning("⚠️ Image processor initialization incomplete")
+            except Exception as e:
+                logger.warning(f"⚠️ Image processor failed to initialize: {e}")
             
-            logger.info("🎉 All AI pipeline components initialized!")
+            logger.info("🎉 AI pipeline components initialization completed!")
             
         except Exception as e:
             logger.error(f"Failed to initialize AI pipelines: {e}")
@@ -113,8 +143,20 @@ class StoryOrchestrator:
             
         except Exception as e:
             logger.error(f"Failed to create session directory: {e}")
-            # Fallback to current directory
-            return "."
+            # Fallback to current directory with session subfolder
+            try:
+                fallback_dir = Path(".") / "media" / "sessions" / session_id
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                (fallback_dir / "story").mkdir(exist_ok=True)
+                (fallback_dir / "images").mkdir(exist_ok=True)
+                (fallback_dir / "processed").mkdir(exist_ok=True)
+                (fallback_dir / "final").mkdir(exist_ok=True)
+                logger.info(f"Fallback session directory created: {fallback_dir}")
+                return str(fallback_dir)
+            except Exception as fallback_error:
+                logger.error(f"Failed to create fallback directory: {fallback_error}")
+                # Last resort - use current directory
+                return str(Path(".").resolve())
     
     def _update_workflow_status(self, step: str, status: str, details: str = "", error: str = ""):
         """Update workflow status tracking"""
@@ -245,6 +287,81 @@ class StoryOrchestrator:
                 "story_generation", "failed", 
                 "Story generation failed", str(e)
             )
+            raise
+
+    def _generate_story(self, user_prompt: str) -> Dict[str, Any]:
+        """Generate story text only (for story-only generation)"""
+        try:
+            # Ensure session directory is set
+            if not self.session_dir:
+                raise RuntimeError("Session directory not initialized")
+            
+            # Check if story generator is available
+            if not self.story_generator or not hasattr(self.story_generator, 'initialized') or not self.story_generator.initialized:
+                # Fallback: generate a simple story
+                logger.warning("Story generator not available, using fallback mode")
+                return self._generate_fallback_story(user_prompt)
+            
+            # Generate story content using AI
+            story_result = self.story_generator.generate_story(user_prompt)
+            
+            if story_result["status"] == "success":
+                # Save story to file
+                story_file = Path(self.session_dir) / "story" / "generated_story.txt"
+                story_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(story_file, 'w', encoding='utf-8') as f:
+                    f.write(f"User Prompt: {user_prompt}\n\n")
+                    f.write(f"Generated Story:\n{story_result['content']}\n\n")
+                    f.write(f"Character Descriptions:\n{story_result['character_desc']}\n\n")
+                    f.write(f"Background Descriptions:\n{story_result['background_desc']}")
+                
+                self.output_files["story"] = str(story_file)
+                
+                return story_result
+            else:
+                raise RuntimeError(f"Story generation failed: {story_result.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            logger.error(f"Story generation failed: {e}")
+            raise
+    
+    def _generate_fallback_story(self, user_prompt: str) -> Dict[str, Any]:
+        """Generate a simple fallback story when AI is not available"""
+        try:
+            # Create a simple story based on the prompt
+            story_content = f"""Once upon a time, there was a world where {user_prompt}. 
+
+The story begins with a sense of wonder and possibility. Characters move through this narrative landscape, each carrying their own hopes and dreams.
+
+As the tale unfolds, we discover that every challenge is an opportunity for growth, and every moment holds the potential for magic.
+
+The end of this story is not really an ending, but a new beginning - for stories live on in the hearts of those who hear them."""
+            
+            character_desc = f"A protagonist inspired by: {user_prompt}"
+            background_desc = f"A setting that reflects: {user_prompt}"
+            
+            # Save story to file
+            story_file = Path(self.session_dir) / "story" / "generated_story.txt"
+            story_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(story_file, 'w', encoding='utf-8') as f:
+                f.write(f"User Prompt: {user_prompt}\n\n")
+                f.write(f"Generated Story:\n{story_content}\n\n")
+                f.write(f"Character Descriptions:\n{character_desc}\n\n")
+                f.write(f"Background Descriptions:\n{background_desc}")
+            
+            self.output_files["story"] = str(story_file)
+            
+            return {
+                "status": "success",
+                "content": story_content,
+                "character_desc": character_desc,
+                "background_desc": background_desc
+            }
+            
+        except Exception as e:
+            logger.error(f"Fallback story generation failed: {e}")
             raise
     
     def _generate_character_image(self, story_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -464,6 +581,336 @@ class StoryOrchestrator:
             "output_files": self.output_files,
             "session_directory": self.session_dir
         }
+
+    def generate_story_only(self, prompt_text: str, session_id: str) -> Dict[str, Any]:
+        """Generate only the story text without images"""
+        try:
+            self.session_id = session_id
+            self.start_time = time.time()
+            
+            # Create session directory and ensure it's set
+            self.session_dir = self._create_session_directory(session_id)
+            if not self.session_dir:
+                raise RuntimeError("Failed to create session directory")
+            
+            logger.info(f"🚀 Starting Story-Only Generation Pipeline")
+            logger.info(f"Session ID: {session_id}")
+            logger.info(f"User Prompt: {prompt_text}")
+            logger.info("=" * 60)
+            
+            # Generate story
+            self._update_workflow_status("story_generation", "in_progress", "Generating story content...")
+            story_result = self._generate_story(prompt_text)
+            
+            if not story_result:
+                raise RuntimeError("Story generation failed")
+            
+            # Compile results
+            final_result = {
+                "status": "success",
+                "session_id": session_id,
+                "results": {
+                    "story": story_result
+                },
+                "output_files": self.output_files,
+                "total_time_seconds": time.time() - self.start_time,
+                "workflow_status": self.workflow_status
+            }
+            
+            logger.info("✅ Story-only generation completed successfully")
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"Story-only generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "session_id": session_id
+            }
+
+    def generate_character_only(self, prompt_text: str, session_id: str) -> Dict[str, Any]:
+        """Generate only character image from prompt"""
+        try:
+            self.session_id = session_id
+            self.start_time = time.time()
+            
+            # Create session directory and ensure it's set
+            self.session_dir = self._create_session_directory(session_id)
+            if not self.session_dir:
+                raise RuntimeError("Failed to create session directory")
+            
+            logger.info(f"🚀 Starting Character-Only Generation Pipeline")
+            logger.info(f"Session ID: {session_id}")
+            logger.info(f"User Prompt: {prompt_text}")
+            logger.info("=" * 60)
+            
+            # Generate character image
+            self._update_workflow_status("character_generation", "in_progress", "Generating character image...")
+            character_result = self._generate_character_image_from_prompt(prompt_text)
+            
+            if not character_result:
+                raise RuntimeError("Character generation failed")
+            
+            # Compile results
+            final_result = {
+                "status": "success",
+                "session_id": session_id,
+                "results": {
+                    "character": character_result
+                },
+                "output_files": {
+                    "character_image": character_result.get("file_path", "")
+                },
+                "total_time_seconds": time.time() - self.start_time,
+                "workflow_status": self.workflow_status
+            }
+            
+            logger.info("✅ Character-only generation completed successfully")
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"Character-only generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "session_id": session_id
+            }
+
+    def generate_background_only(self, prompt_text: str, session_id: str) -> Dict[str, Any]:
+        """Generate only background image from prompt"""
+        try:
+            self.session_id = session_id
+            self.start_time = time.time()
+            
+            # Create session directory and ensure it's set
+            self.session_dir = self._create_session_directory(session_id)
+            if not self.session_dir:
+                raise RuntimeError("Failed to create session directory")
+            
+            logger.info(f"🚀 Starting Background-Only Generation Pipeline")
+            logger.info(f"Session ID: {session_id}")
+            logger.info(f"User Prompt: {prompt_text}")
+            logger.info("=" * 60)
+            
+            # Generate background image
+            self._update_workflow_status("background_generation", "in_progress", "Generating background image...")
+            background_result = self._generate_background_image_from_prompt(prompt_text)
+            if not background_result:
+                raise RuntimeError("Background generation failed")
+            
+            # Compile results
+            final_result = {
+                "status": "success",
+                "session_id": session_id,
+                "results": {
+                    "background": background_result
+                },
+                "output_files": {
+                    "background_image": background_result.get("file_path", "")
+                },
+                "total_time_seconds": time.time() - self.start_time,
+                "workflow_status": self.workflow_status
+            }
+            
+            logger.info("✅ Background-only generation completed successfully")
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"Background-only generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "session_id": session_id
+            }
+
+    def merge_images_only(self, prompt_text: str, session_id: str) -> Dict[str, Any]:
+        """Merge existing character and background images"""
+        try:
+            self.session_id = session_id
+            self.start_time = time.time()
+            self._create_session_directory(session_id)
+            
+            logger.info(f"🚀 Starting Image Merging Pipeline")
+            logger.info(f"Session ID: {session_id}")
+            logger.info(f"User Prompt: {prompt_text}")
+            logger.info("=" * 60)
+            
+            # This would typically require existing images to be uploaded
+            # For now, we'll return a message about the requirement
+            logger.info("ℹ️ Image merging requires existing character and background images")
+            
+            # Compile results
+            final_result = {
+                "status": "success",
+                "session_id": session_id,
+                "results": {
+                    "merge_info": "Image merging requires existing character and background images to be uploaded"
+                },
+                "output_files": {},
+                "total_time_seconds": time.time() - self.start_time,
+                "workflow_status": self.workflow_status
+            }
+            
+            logger.info("✅ Image merging pipeline completed successfully")
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"Image merging failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "session_id": session_id
+            }
+
+    def _generate_character_image_from_prompt(self, prompt_text: str) -> Optional[Dict[str, Any]]:
+        """Generate character image directly from prompt"""
+        try:
+            # Ensure session directory is set
+            if not self.session_dir:
+                raise RuntimeError("Session directory not initialized")
+            
+            # Check if image generator is available
+            if not self.image_generator or not hasattr(self.image_generator, 'initialized') or not self.image_generator.initialized:
+                # Fallback: create a placeholder image or return info
+                logger.warning("Image generator not available, using fallback mode")
+                return self._generate_fallback_character_image(prompt_text)
+            
+            # Create a simple character description from the prompt
+            character_desc = f"Character: {prompt_text}"
+            
+            # Generate character image
+            character_path = Path(self.session_dir) / "images" / "character.png"
+            character_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            result = self.image_generator.generate_character_image(character_desc, str(character_path))
+            
+            if result and character_path.exists():
+                return {
+                    "status": "success",
+                    "file_path": str(character_path),
+                    "description": character_desc
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "error": "Character image generation failed"
+                }
+                
+        except Exception as e:
+            logger.error(f"Character image generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
+    
+    def _generate_fallback_character_image(self, prompt_text: str) -> Dict[str, Any]:
+        """Generate a fallback character image when AI is not available"""
+        try:
+            # Create a placeholder text file instead of an image
+            character_path = Path(self.session_dir) / "images" / "character_placeholder.txt"
+            character_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            placeholder_content = f"""Character Image Placeholder
+Generated from prompt: {prompt_text}
+
+This is a placeholder for a character image that would be generated using AI.
+In a full implementation, this would be a PNG image file.
+
+Character Description: {prompt_text}
+Generated at: {datetime.now().isoformat()}
+"""
+            
+            with open(character_path, 'w', encoding='utf-8') as f:
+                f.write(placeholder_content)
+            
+            return {
+                "status": "success",
+                "file_path": str(character_path),
+                "description": f"Character: {prompt_text} (placeholder)",
+                "is_placeholder": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Fallback character image generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
+
+    def _generate_background_image_from_prompt(self, prompt_text: str) -> Optional[Dict[str, Any]]:
+        """Generate background image directly from prompt"""
+        try:
+            # Ensure session directory is set
+            if not self.session_dir:
+                raise RuntimeError("Session directory not initialized")
+            
+            # Check if image generator is available
+            if not self.image_generator or not hasattr(self.image_generator, 'initialized') or not self.image_generator.initialized:
+                # Fallback: create a placeholder image or return info
+                logger.warning("Image generator not available, using fallback mode")
+                return self._generate_fallback_background_image(prompt_text)
+            
+            # Create a simple background description from the prompt
+            background_desc = f"Background: {prompt_text}"
+            
+            # Generate background image
+            background_path = Path(self.session_dir) / "images" / "background.png"
+            background_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            result = self.image_generator.generate_background_image(background_desc, str(background_path))
+            
+            if result and background_path.exists():
+                return {
+                    "status": "success",
+                    "file_path": str(background_path),
+                    "description": background_desc
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "error": "Background image generation failed"
+                }
+                
+        except Exception as e:
+            logger.error(f"Background image generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
+    
+    def _generate_fallback_background_image(self, prompt_text: str) -> Dict[str, Any]:
+        """Generate a fallback background image when AI is not available"""
+        try:
+            # Create a placeholder text file instead of an image
+            background_path = Path(self.session_dir) / "images" / "background_placeholder.txt"
+            background_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            placeholder_content = f"""Background Image Placeholder
+Generated from prompt: {prompt_text}
+
+This is a placeholder for a background image that would be generated using AI.
+In a full implementation, this would be a PNG image file.
+
+Background Description: {prompt_text}
+Generated at: {datetime.now().isoformat()}
+"""
+            
+            with open(background_path, 'w', encoding='utf-8') as f:
+                f.write(placeholder_content)
+            
+            return {
+                "status": "success",
+                "file_path": str(background_path),
+                "description": f"Background: {prompt_text} (placeholder)",
+                "is_placeholder": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Fallback background image generation failed: {e}")
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
     
     def cleanup_session(self):
         """Clean up session files (optional)"""

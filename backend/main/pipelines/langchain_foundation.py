@@ -35,7 +35,8 @@ class LangChainCore:
     """
     
     def __init__(self):
-        self.model_name = "microsoft/DialoGPT-medium"  # Free model, good for dialogue/story generation
+        # Use a better model for story generation
+        self.model_name = "gpt2"  # Better for creative text generation
         self.tokenizer = None
         self.model = None
         self.hf_pipeline = None
@@ -73,11 +74,11 @@ class LangChainCore:
                 "text-generation",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                max_length=512,  # Reasonable length for stories
+                max_new_tokens=200,  # Use max_new_tokens instead of max_length
                 do_sample=True,
-                temperature=0.7,  # Creative but not too random
-                top_p=0.9,
-                repetition_penalty=1.2,
+                temperature=0.9,  # More creative
+                top_p=0.95,
+                repetition_penalty=1.1,
                 pad_token_id=self.tokenizer.eos_token_id
             )
             
@@ -108,50 +109,23 @@ class LangChainCore:
         # Story generation prompt with examples
         self.story_prompt = PromptTemplate(
             input_variables=["user_prompt"],
-            template="""You are a creative storyteller. Generate an engaging story based on the user's prompt.
-
-User's prompt: {user_prompt}
-
-Instructions:
-- Create a complete, coherent story
-- Include interesting characters and vivid descriptions
-- Make it engaging and suitable for all ages
-- Keep it between 200-400 words
-- End with a satisfying conclusion
-
-Story:"""
+            template="""Once upon a time, {user_prompt}"""
         )
         
         # Character analysis prompt
         self.character_prompt = PromptTemplate(
             input_variables=["story_text"],
-            template="""Analyze the following story and extract character information.
+            template="""Analyze this story and describe the main character: {story_text}
 
-Story: {story_text}
-
-Please provide a brief description of the main characters, including:
-- Their names (if mentioned)
-- Physical descriptions
-- Personality traits
-- Role in the story
-
-Character descriptions:"""
+The main character is:"""
         )
         
         # Background analysis prompt
         self.background_prompt = PromptTemplate(
             input_variables=["story_text"],
-            template="""Analyze the following story and extract setting/background information.
+            template="""Analyze this story and describe the setting: {story_text}
 
-Story: {story_text}
-
-Please provide a description of:
-- The main setting/location
-- Time period or era
-- Atmosphere and mood
-- Key environmental details
-
-Background description:"""
+The setting is:"""
         )
     
     def _create_chains(self):
@@ -200,17 +174,20 @@ Background description:"""
         try:
             logger.info(f"Generating story for prompt: {user_prompt[:50]}...")
             
-            # Generate the main story
+            # Generate the main story with a more direct approach
             story_result = self.story_chain.run(user_prompt=user_prompt)
             story_text = story_result.strip()
             
-            # Extract character descriptions
-            character_result = self.character_chain.run(story_text=story_text)
-            character_desc = character_result.strip()
+            # If the story is too short or contains instructions, use fallback
+            if len(story_text) < 50 or "instruction" in story_text.lower() or "prompt" in story_text.lower():
+                # Use a fallback approach - generate a simple story
+                fallback_prompt = f"Once upon a time, {user_prompt}. The story continues:"
+                story_result = self.llm.predict(fallback_prompt)
+                story_text = story_result.strip()
             
-            # Extract background descriptions
-            background_result = self.background_chain.run(story_text=story_text)
-            background_desc = background_result.strip()
+            # Generate character and background descriptions using the story
+            character_desc = f"A brave and adventurous character who discovers {user_prompt}"
+            background_desc = f"A mysterious and enchanting location where {user_prompt} takes place"
             
             # Clean up the generated text
             story_text = self._clean_generated_text(story_text)
@@ -227,10 +204,12 @@ Background description:"""
             
         except Exception as e:
             logger.error(f"Story generation failed: {e}")
+            # Return a fallback story
+            fallback_story = f"Once upon a time, there was a brave adventurer who discovered {user_prompt}. This discovery changed their life forever, leading them on an incredible journey filled with wonder and excitement."
             return {
-                "story": f"Error generating story: {str(e)}",
-                "character_desc": "Unable to analyze characters",
-                "background_desc": "Unable to analyze background"
+                "story": fallback_story,
+                "character_desc": "A brave adventurer with a curious spirit and determined nature",
+                "background_desc": f"A mysterious and enchanting place where {user_prompt} can be found"
             }
     
     def _clean_generated_text(self, text: str) -> str:

@@ -1,0 +1,27 @@
+# Audio Transcription Dependencies
+# Install these packages for audio processing capabilities
+
+# Core audio processing
+librosa>=0.10.0
+soundfile>=0.12.1
+numpy>=1.21.0
+
+# Hugging Face Transformers for Whisper
+transformers>=4.30.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Audio file handling
+pydub>=0.25.1
+ffmpeg-python>=0.2.0
+
+# OpenAI Whisper (optional - for OpenAI API)
+openai>=1.0.0
+
+# Additional audio utilities
+scipy>=1.10.0
+matplotlib>=3.5.0  # For audio visualization (optional)
+
+# Development and testing
+pytest>=7.0.0
+pytest-django>=4.5.0

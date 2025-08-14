@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-f^cr#vt6%%_h)9nidagjar6yn3k5$)0g+kco(2*6(l5+!s)e-%
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 
 
 # Application definition
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     
     # Local apps
     'main',
+    'audio_processor',
 ]
 
 MIDDLEWARE = [
@@ -134,13 +135,50 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Audio transcription settings
+WHISPER_MODEL = 'openai/whisper-small'  # Hugging Face model
+USE_OPENAI_WHISPER = False  # Set to True to use OpenAI Whisper API
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')  # Set your OpenAI API key
+
+# File upload settings
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25MB
+ALLOWED_AUDIO_TYPES = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/wave']
+
 # CORS settings for React frontend
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React development server
     "http://127.0.0.1:3000",
+    "http://localhost:3001",  # Alternative React port
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",  # Vite development server
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",  # Django backend
+    "http://127.0.0.1:8000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Additional CORS settings for development
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all origins in debug mode
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # REST Framework configuration
 REST_FRAMEWORK = {
